@@ -1,0 +1,9 @@
+pyobjc-core
+pyobjc-framework-Cocoa
+pyobjc-framework-ApplicationServices
+pyobjc-framework-Quartz
+rumps
+anthropic
+openai
+requests
+pynput

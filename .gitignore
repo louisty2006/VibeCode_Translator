@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# macOS
+.DS_Store
+
+# Editor / local config
+.claude/
+.vscode/
+.idea/
+
+# User settings (never commit API keys)
+.vibecode_translator_settings.json
+.vibecode_reader_settings.json
