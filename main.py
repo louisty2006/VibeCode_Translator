@@ -10,15 +10,6 @@ import os
 import threading
 import time
 
-# ── Debug logging to file (packaged app has no visible stdout) ─────────────────
-_LOG_PATH = os.path.expanduser("~/vibecode_debug.log")
-def _log(msg):
-    try:
-        with open(_LOG_PATH, "a") as f:
-            f.write(f"{time.strftime('%H:%M:%S')} {msg}\n")
-    except Exception:
-        pass
-
 import AppKit
 import objc
 from Foundation import NSObject, NSMakeRect
@@ -330,9 +321,7 @@ def _has_accessibility():
     return bool(AXIsProcessTrusted())
 
 def trigger_explain():
-    _log("trigger_explain entered")
     if not _trigger_lock.acquire(blocking=False):
-        _log("trigger_explain: lock busy, skip")
         return
     try:
         if not _has_accessibility():
@@ -345,7 +334,6 @@ def trigger_explain():
             _open_accessibility_settings()
             return
         text = get_selected_text()
-        _log(f"selected text len={len(text)}")
         if not text:
             show_bubble("⚠️ Please highlight some code first")
             return
@@ -371,24 +359,21 @@ _hotkey_ref = ctypes.c_void_p()
 _handler_ref = ctypes.c_void_p()
 _carbon_cb = None  # ponytail: prevent GC of ctypes callback
 
+class _HotKeyID(ctypes.Structure):
+    _fields_ = [("signature", ctypes.c_uint32), ("id", ctypes.c_uint32)]
+
+class _EventTypeSpec(ctypes.Structure):
+    _fields_ = [("eventClass", ctypes.c_uint32), ("eventKind", ctypes.c_uint32)]
+
+_HANDLER_T = ctypes.CFUNCTYPE(ctypes.c_int32, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
+
 def start_hotkey_listener():
-    _log("start_hotkey_listener called")
-
-    class _HotKeyID(ctypes.Structure):
-        _fields_ = [("signature", ctypes.c_uint32), ("id", ctypes.c_uint32)]
-
-    class _EventTypeSpec(ctypes.Structure):
-        _fields_ = [("eventClass", ctypes.c_uint32), ("eventKind", ctypes.c_uint32)]
-
-    _HANDLER_T = ctypes.CFUNCTYPE(ctypes.c_int32, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
-
     def _on_hotkey(next_handler, the_event, user_data):
         global _last_trigger_time
         now = time.time()
         if now - _last_trigger_time < 1.5:
             return 0
         _last_trigger_time = now
-        _log("HOTKEY MATCHED -> trigger_explain")
         threading.Thread(target=trigger_explain, daemon=True).start()
         return 0
 
@@ -405,16 +390,13 @@ def start_hotkey_listener():
     _install_handler.restype = ctypes.c_int32
 
     target = ctypes.c_void_p(_get_target())
-    _log(f"EventTarget={target.value:#x}" if target.value else "EventTarget=None")
 
     # Register Cmd+Ctrl+E: keyCode=14, cmdKey=0x0100, controlKey=0x1000
     hkid = _HotKeyID(signature=0x76626364, id=1)
-    status = _reg_hotkey(14, 0x0100 | 0x1000, hkid, target, 0, ctypes.byref(_hotkey_ref))
-    _log(f"RegisterEventHotKey status={status}")
+    _reg_hotkey(14, 0x0100 | 0x1000, hkid, target, 0, ctypes.byref(_hotkey_ref))
 
     event_type = _EventTypeSpec(0x6B657962, 5)  # kEventClassKeyboard, kEventHotKeyPressed
-    status2 = _install_handler(target, _carbon_cb, 1, ctypes.byref(event_type), None, ctypes.byref(_handler_ref))
-    _log(f"InstallEventHandler status={status2}")
+    _install_handler(target, _carbon_cb, 1, ctypes.byref(event_type), None, ctypes.byref(_handler_ref))
 
 # ── Menu bar app ───────────────────────────────────────────────────────────────
 
