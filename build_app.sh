@@ -22,7 +22,8 @@ echo "→ Installing build dependencies..."
 python -m pip install -q -r requirements-build.txt
 
 echo "→ Cleaning previous build..."
-rm -rf build dist
+rm -rf build
+find dist -mindepth 1 -delete 2>/dev/null || rm -rf dist
 
 echo "→ Building VibeCode Translator.app (this may take a few minutes)..."
 python setup.py py2app
