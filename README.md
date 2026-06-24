@@ -44,36 +44,65 @@ VibeCode Translator 讓你 **選取 → 解釋**，不用複製貼上到 ChatGPT
 
 ## 安裝與啟動
 
-### 1. 下載專案
+### 方式 A：下載 `.app`（推薦給同事）
+
+1. 從 [GitHub Releases](https://github.com/louisty2006/VibeCode_Translator/releases) 下載 `VibeCode Translator.app`（或向開發者索取 `dist/VibeCode Translator.app`）
+2. 拖到「應用程式」資料夾
+3. 雙擊開啟（首次可能需在 **系統設定 → 隱私權與安全性** 點「仍要開啟」）
+4. 授予 **輔助使用** 權限（見下方「macOS 權限設定」）
+5. 選單列出現 **✦** 後，開啟 **⚙️ Settings** 填入 API Key
+
+> 不需要安裝 Python、venv 或 `pip`。
+
+---
+
+### 方式 B：從原始碼執行（開發者）
+
+#### 1. 下載專案
 
 ```bash
 git clone https://github.com/louisty2006/VibeCode_Translator.git
 cd VibeCode_Translator
 ```
 
-或下載 ZIP 後解壓縮，在終端機進入資料夾：
+#### 2. 建立虛擬環境並安裝依賴
 
 ```bash
-cd ~/Documents/VibeCode\ Translator
+python3 -m venv venv
+source venv/bin/activate          # 終端機應顯示 (venv)
+pip install -r requirements.txt     # 必做！否則會缺 rumps、AppKit
 ```
 
-> **注意：** 不能直接執行資料夾路徑。必須先用 `cd` 進入專案目錄，再執行 `python3 main.py`。
-
-### 2. 安裝依賴
+#### 3. 啟動 App
 
 ```bash
-pip3 install -r requirements.txt
+python main.py
 ```
 
-### 3. 啟動 App
+> **注意：** clone 下來不能直接 `python main.py`，一定要先 `pip install -r requirements.txt`。
+
+啟動後，選單列出現 **✦** 圖示，代表 App 已在背景執行。首次啟動會自動開啟設定視窗。
+
+---
+
+### 方式 C：自己打包 `.app`（開發者）
+
+在 macOS 上執行：
 
 ```bash
-python3 main.py
+cd VibeCode_Translator
+./build_app.sh
 ```
 
-啟動後，選單列出現 **✦** 圖示，代表 App 已在背景執行。
+完成後產生 `dist/VibeCode Translator.app`，可：
 
-首次啟動會自動開啟設定視窗，請填入 API Key 與偏好語言。
+```bash
+open "dist/VibeCode Translator.app"
+```
+
+將 `.app` 壓縮後分享給同事，或上傳至 GitHub Releases。
+
+**需求：** macOS、Python 3.11+（腳本會自動建立 `.build-venv` 並安裝 py2app）
 
 ---
 
@@ -187,17 +216,26 @@ which python3
 
 ```
 VibeCode_Translator/
-├── main.py        # 入口：選單列 App、快捷鍵、設定視窗
-├── explainer.py   # LLM 呼叫與解釋 prompt
-├── bubble.py      # 浮動解釋氣泡 UI
-├── providers.py   # AI 供應商設定
-├── settings.py    # 讀寫使用者設定
-└── requirements.txt
+├── main.py                 # 入口：選單列 App、快捷鍵、設定視窗
+├── explainer.py            # LLM 呼叫與解釋 prompt
+├── bubble.py               # 浮動解釋氣泡 UI
+├── providers.py            # AI 供應商設定
+├── settings.py             # 讀寫使用者設定
+├── setup.py                # py2app 打包設定
+├── build_app.sh            # 一鍵打包腳本
+├── requirements.txt        # 執行時依賴
+└── requirements-build.txt  # 打包時依賴（含 py2app）
 ```
 
 ---
 
 ## 常見問題
+
+**Q: `No module named 'rumps'` 或 `AppKit`？**  
+從原始碼執行時，先啟用 venv 並執行 `pip install -r requirements.txt`。或改用 `.app` 版本，無需手動安裝。
+
+**Q: macOS 說「無法驗證開發者」？**  
+未簽名的 `.app` 會出現此提示。到 **系統設定 → 隱私權與安全性** 點「仍要開啟」。
 
 **Q: 按快捷鍵沒反應？**  
 確認已授予輔助使用權限，並重新啟動 App。選單列點 **🔓 Enable Shortcut** 檢查。
