@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 VibeCode Translator — Global code explainer
-Highlight any code → Cmd+Shift+E or right-click menu → natural language explanation
+Highlight any code → global shortcut or right-click menu → natural language explanation
 """
 
 import sys
@@ -20,6 +20,14 @@ from settings import load_settings, save_settings
 from explainer import explain_code
 from bubble import show_bubble, show_loading_bubble
 from providers import PROVIDERS, PROVIDER_BY_ID, DEFAULT_PROVIDER_ID
+from hotkey import (
+    DEFAULT_HOTKEY,
+    format_hotkey_display,
+    format_hotkey_spoken,
+    hotkey_from_nsevent_flags,
+    key_matches_hotkey,
+    parse_hotkey,
+)
 
 # ── Text editing (menu bar apps lack a standard Edit menu) ─────────────────────
 
@@ -161,6 +169,11 @@ class _SettingsWindowController(NSObject):
         self._model_field = None
         self._provider_select = None
         self._lang_select = None
+        self._hotkey_display = None
+        self._record_btn = None
+        self._hotkey = DEFAULT_HOTKEY
+        self._event_monitor = None
+        self._recording = False
         self._provider_ids = [p["id"] for p in PROVIDERS]
         self._modal_done = False
         return self
@@ -172,7 +185,7 @@ class _SettingsWindowController(NSObject):
         current_cfg = PROVIDER_BY_ID.get(current_provider, PROVIDERS[0])
 
         panel = AppKit.NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
-            NSMakeRect(0, 0, 420, 260),
+            NSMakeRect(0, 0, 420, 290),
             AppKit.NSWindowStyleMaskTitled | AppKit.NSWindowStyleMaskClosable,
             AppKit.NSBackingStoreBuffered,
             False,
@@ -230,15 +243,41 @@ class _SettingsWindowController(NSObject):
         content.addSubview_(lang_select)
         self._lang_select = lang_select
 
+        self._hotkey = settings.get("hotkey", DEFAULT_HOTKEY)
+
+        shortcut_label = AppKit.NSTextField.labelWithString_("Global Shortcut:")
+        shortcut_label.setFrame_(NSMakeRect(20, 50, 120, 20))
+        content.addSubview_(shortcut_label)
+
+        hotkey_display = AppKit.NSTextField.alloc().initWithFrame_(NSMakeRect(145, 48, 90, 24))
+        hotkey_display.setEditable_(False)
+        hotkey_display.setSelectable_(False)
+        hotkey_display.setBezeled_(True)
+        hotkey_display.setDrawsBackground_(True)
+        hotkey_display.setAlignment_(AppKit.NSTextAlignmentCenter)
+        hotkey_display.setFont_(AppKit.NSFont.monospacedSystemFontOfSize_weight_(14.0, AppKit.NSFontWeightMedium))
+        hotkey_display.setStringValue_(format_hotkey_display(self._hotkey))
+        content.addSubview_(hotkey_display)
+        self._hotkey_display = hotkey_display
+
+        record_btn = AppKit.NSButton.alloc().initWithFrame_(NSMakeRect(250, 46, 120, 28))
+        record_btn.setTitle_("Record Shortcut")
+        record_btn.setBezelStyle_(AppKit.NSBezelStyleRounded)
+        record_btn.setTarget_(self)
+        record_btn.setAction_(objc.selector(self.record_shortcut_, signature=b"v@:@"))
+        content.addSubview_(record_btn)
+        self._record_btn = record_btn
+
+        shortcut_hint = AppKit.NSTextField.labelWithString_("Click Record, then press your shortcut keys")
+        shortcut_hint.setFrame_(NSMakeRect(20, 28, 360, 16))
+        shortcut_hint.setTextColor_(AppKit.NSColor.secondaryLabelColor())
+        shortcut_hint.setFont_(AppKit.NSFont.systemFontOfSize_(11.0))
+        content.addSubview_(shortcut_hint)
+
         provider_select.setNextKeyView_(key_field)
         key_field.setNextKeyView_(model_field)
         model_field.setNextKeyView_(lang_select)
-
-        hint = AppKit.NSTextField.labelWithString_("Shortcut: Cmd + Shift + E")
-        hint.setFrame_(NSMakeRect(20, 50, 300, 20))
-        hint.setTextColor_(AppKit.NSColor.secondaryLabelColor())
-        hint.setFont_(AppKit.NSFont.systemFontOfSize_(11.0))
-        content.addSubview_(hint)
+        lang_select.setNextKeyView_(record_btn)
 
         save_btn = AppKit.NSButton.alloc().initWithFrame_(NSMakeRect(300, 12, 100, 28))
         save_btn.setTitle_("Save")
@@ -261,7 +300,51 @@ class _SettingsWindowController(NSObject):
         panel.makeFirstResponder_(key_field)
         AppKit.NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
 
+    def _stop_recording(self):
+        self._recording = False
+        if self._event_monitor is not None:
+            AppKit.NSEvent.removeMonitor_(self._event_monitor)
+            self._event_monitor = None
+        if self._record_btn is not None:
+            self._record_btn.setTitle_("Record Shortcut")
+
+    def record_shortcut_(self, sender):
+        if self._recording:
+            self._stop_recording()
+            return
+
+        self._recording = True
+        self._record_btn.setTitle_("Press keys…")
+        self._hotkey_display.setStringValue_("…")
+
+        def handler(event):
+            if not self._recording:
+                return event
+            if event.type() != AppKit.NSKeyDown:
+                return event
+            key = event.charactersIgnoringModifiers()
+            if key == "\x1b":
+                self._hotkey_display.setStringValue_(format_hotkey_display(self._hotkey))
+                self._stop_recording()
+                return event
+            if not key or len(key) != 1 or not key.isalnum():
+                return event
+            flags = event.modifierFlags() & AppKit.NSDeviceIndependentModifierFlagsMask
+            try:
+                self._hotkey = hotkey_from_nsevent_flags(key, flags)
+                self._hotkey_display.setStringValue_(format_hotkey_display(self._hotkey))
+            except ValueError:
+                return event
+            self._stop_recording()
+            return event
+
+        self._event_monitor = AppKit.NSEvent.addLocalMonitorForEventsMatchingMask_handler_(
+            AppKit.NSKeyDownMask,
+            handler,
+        )
+
     def save_(self, sender):
+        self._stop_recording()
         provider = self._provider_ids[self._provider_select.indexOfSelectedItem()]
         language = "en" if self._lang_select.indexOfSelectedItem() == 0 else "zh"
         save_settings({
@@ -269,15 +352,19 @@ class _SettingsWindowController(NSObject):
             "api_key": "".join(self._key_field.stringValue().split()),
             "model": self._model_field.stringValue().strip(),
             "language": language,
+            "hotkey": self._hotkey,
         })
+        reload_hotkey_listener()
         _clear_settings_controller()
         self._panel.orderOut_(None)
 
     def cancel_(self, sender):
+        self._stop_recording()
         _clear_settings_controller()
         self._panel.orderOut_(None)
 
     def windowShouldClose_(self, sender):
+        self._stop_recording()
         _clear_settings_controller()
         return True
 
@@ -331,10 +418,11 @@ def open_accessibility_settings():
 
 def show_accessibility_prompt(then=None):
     python_path = _accessibility_python_hint()
+    shortcut = format_hotkey_spoken(load_settings().get("hotkey", DEFAULT_HOTKEY))
     alert = AppKit.NSAlert.alloc().init()
-    alert.setMessageText_("Enable Accessibility for Cmd+Shift+E")
+    alert.setMessageText_(f"Enable Accessibility for {shortcut}")
     alert.setInformativeText_(
-        "VibeCode Translator needs Accessibility permission to listen for Cmd+Shift+E.\n\n"
+        f"VibeCode Translator needs Accessibility permission to listen for {shortcut}.\n\n"
         "1. Click Open System Settings\n"
         "2. Enable Terminal and Python.app (Homebrew)\n"
         f"3. If needed, add:\n{python_path}\n\n"
@@ -351,20 +439,20 @@ def show_accessibility_prompt(then=None):
 
 from pynput import keyboard as kb
 
-_hotkey_combo = {kb.Key.cmd, kb.Key.shift, kb.KeyCode.from_char('e')}
+_hotkey_spec = None
+_hotkey_listener = None
 _pressed_keys = set()
 _last_trigger_time = 0.0
 _trigger_lock = threading.Lock()
 
+def _current_hotkey_spec():
+    global _hotkey_spec
+    if _hotkey_spec is None:
+        _hotkey_spec = parse_hotkey(load_settings().get("hotkey", DEFAULT_HOTKEY))
+    return _hotkey_spec
+
 def _key_matches_combo(pressed: set) -> bool:
-    """Check hotkey ignoring case and cmd_l/cmd_r/shift_l/shift_r variants."""
-    has_cmd = any(k in pressed for k in (kb.Key.cmd, kb.Key.cmd_l, kb.Key.cmd_r))
-    has_shift = any(k in pressed for k in (kb.Key.shift, kb.Key.shift_l, kb.Key.shift_r))
-    has_e = any(
-        (hasattr(k, 'char') and k.char and k.char.lower() == 'e')
-        for k in pressed
-    )
-    return has_cmd and has_shift and has_e
+    return key_matches_hotkey(pressed, _current_hotkey_spec())
 
 def get_selected_text() -> str:
     """Copy selected text to clipboard and return it."""
@@ -423,9 +511,19 @@ def on_release(key):
         _pressed_keys.discard(key.char.upper())
 
 def start_hotkey_listener():
+    global _hotkey_listener, _hotkey_spec
+    _hotkey_spec = parse_hotkey(load_settings().get("hotkey", DEFAULT_HOTKEY))
     listener = kb.Listener(on_press=on_press, on_release=on_release)
     listener.daemon = True
     listener.start()
+    _hotkey_listener = listener
+
+def reload_hotkey_listener():
+    global _hotkey_listener, _hotkey_spec
+    _hotkey_spec = parse_hotkey(load_settings().get("hotkey", DEFAULT_HOTKEY))
+    if _hotkey_listener is not None:
+        _hotkey_listener.stop()
+    start_hotkey_listener()
 
 # ── Menu bar app ───────────────────────────────────────────────────────────────
 
@@ -454,16 +552,18 @@ class VibeCodeTranslatorApp(rumps.App):
             open_settings()
 
     def enable_shortcut(self, _):
+        shortcut = format_hotkey_spoken(load_settings().get("hotkey", DEFAULT_HOTKEY))
         if has_accessibility_permission():
-            show_bubble("✅ Shortcut enabled. Use Cmd + Shift + E on highlighted code.")
+            show_bubble(f"✅ Shortcut enabled. Use {shortcut} on highlighted code.")
             return
         show_accessibility_prompt()
 
     def show_help(self, _):
+        shortcut = format_hotkey_spoken(load_settings().get("hotkey", DEFAULT_HOTKEY))
         show_bubble(
             "How to use VibeCode Translator\n\n"
             "1. Highlight any code\n"
-            "2. Press Cmd + Shift + E\n"
+            f"2. Press {shortcut}\n"
             "   (requires 🔓 Enable Shortcut first)\n\n"
             "First time? Open ⚙️ Settings and enter your API Key"
         )

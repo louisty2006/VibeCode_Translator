@@ -40,6 +40,7 @@ OPTIONS = {
         "explainer",
         "bubble",
         "providers",
+        "hotkey",
         "objc",
         "AppKit",
         "Foundation",

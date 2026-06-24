@@ -4,6 +4,7 @@
 - 獨立 macOS `.app` 安裝包（Apple Silicon）
 - 一鍵開發安裝：`./setup.sh` + `./run.sh`
 - 安裝指引重寫：快速開始表、檢查清單、權限對照
+- 預設快捷鍵 `Cmd+Control+E`；Settings 可錄製自訂快捷鍵
 
 ### 安裝（同事推薦）
 1. 下載下方 `VibeCode-Translator-MVP2-macOS-arm64.zip`
@@ -11,7 +12,7 @@
 3. 若提示「無法驗證開發者」→ 系統設定 → 隱私權與安全性 → **仍要開啟**
 4. 系統設定 → 輔助使用 → 啟用 **VibeCode Translator**
 5. 選單列 ✦ → Settings → 填 API Key
-6. 反白 code → `Cmd + Shift + E`
+6. 反白 code → `Cmd + Control + E`（或自訂快捷鍵）
 
 ### 開發者
 ```bash

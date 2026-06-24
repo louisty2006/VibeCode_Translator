@@ -38,7 +38,7 @@ VibeCode Translator 讓你 **選取 → 解釋**，不用複製貼上到 ChatGPT
 
 | 功能 | 說明 |
 |------|------|
-| **全域快捷鍵** | `Cmd + Shift + E`，在任何 App 都有效 |
+| **全域快捷鍵** | 預設 `Cmd + Control + E`，可在 Settings 自訂，在任何 App 都有效 |
 | **右鍵選單** | 右鍵點擊可選擇「✦ Explain Code」 |
 | **浮動解釋氣泡** | 解釋視窗出現在游標旁，可拖曳、可捲動 |
 | **多 AI 供應商** | Claude、GPT、Gemini、Groq、DeepSeek、Ollama 等 12 種 |
@@ -83,7 +83,7 @@ VibeCode Translator 讓你 **選取 → 解釋**，不用複製貼上到 ChatGPT
 □ 輔助使用已啟用「VibeCode Translator」
 □ 選單列有 ✦ 圖示
 □ Settings 已填入 API Key
-□ 反白 code 後按 Cmd+Shift+E 有氣泡出現
+□ 反白 code 後按 Cmd+Control+E 有氣泡出現
 ```
 
 ---
@@ -160,6 +160,7 @@ open "dist/VibeCode Translator.app"
 | **API Key** | 你的 API 金鑰（Ollama 可留空） |
 | **Model（選填）** | 覆寫預設模型名稱，留空則用內建預設值 |
 | **Explanation Language** | 解釋語言：English 或 繁體中文 |
+| **Global Shortcut** | 點 **Record Shortcut** 錄製自訂快捷鍵（預設 `⌘⌃E`） |
 
 設定會儲存至 `~/.vibecode_translator_settings.json`。
 
@@ -232,7 +233,7 @@ which python    # 在 venv 啟用後執行
 ## 使用方式
 
 1. 在任何 App 中 **反白一段程式碼**
-2. 按 **`Cmd + Shift + E`**
+2. 按 **`Cmd + Control + E`**（或你在 Settings 設定的快捷鍵）
    - 或右鍵 → **✦ Explain Code**
 3. 等待氣泡出現（顯示「⏳ Analyzing...」）
 4. 閱讀解釋，點 **✕** 關閉氣泡
@@ -262,6 +263,7 @@ VibeCode_Translator/
 ├── explainer.py            # LLM 呼叫與解釋 prompt
 ├── bubble.py               # 浮動解釋氣泡 UI
 ├── providers.py            # AI 供應商設定
+├── hotkey.py               # 快捷鍵解析、顯示與比對
 ├── settings.py             # 讀寫使用者設定
 ├── setup.py                # py2app 打包設定
 ├── setup.sh                # 一鍵安裝（原始碼方式）

@@ -10,6 +10,8 @@
 - README 重寫：三種安裝路徑、常見錯誤對照表
 - 專案更名為 **VibeCode Translator**（原 VibeCode Reader）
 - 開源至 GitHub
+- 預設快捷鍵改為 `Cmd+Control+E`（避免與 Cursor / VS Code 衝突）
+- Settings 支援錄製自訂全域快捷鍵
 
 ## MVP1 — 2026-06-23
 
