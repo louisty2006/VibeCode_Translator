@@ -1,0 +1,39 @@
+---
+description: Keep source code and packaged .app release in sync
+alwaysApply: true
+---
+
+# Source and Release Sync
+
+VibeCode Translator has two delivery paths that share the same Python source:
+
+- **Source**: `./setup.sh` + `./run.sh`
+- **Packaged**: `./build_app.sh` → `dist/VibeCode Translator.app` → GitHub Releases (zip)
+
+`dist/` is gitignored. Colleagues download the `.app` from GitHub Releases, not from the repo.
+
+## When modifying app behavior or UI
+
+Complete all of these in the same work session (unless the user explicitly says "dev only, do not release"):
+
+1. **Source changes** — edit `.py` files as needed
+2. **New modules** — add any new Python module to `setup.py` → `includes` (e.g. `ui_theme`)
+3. **CHANGELOG** — add an entry to `CHANGELOG.md`
+4. **Version bump** — `./release.sh X.Y.Z --notes RELEASE_NOTES_X.Y.Z.md` updates `setup.py` and publishes
+
+## Do not
+
+- Change only `.py` files without rebuilding and publishing a Release
+- Forget `setup.py` `includes` when adding new local modules (breaks the `.app` build)
+
+## Before releasing
+
+- Quick smoke test via source path: `./run.sh`
+- Ensure changes are committed before `./release.sh`
+- Release script requires macOS, `gh auth login`, and a `RELEASE_NOTES_*.md` file
+
+## Release command
+
+```bash
+./release.sh X.Y.Z --notes RELEASE_NOTES_X.Y.Z.md
+```

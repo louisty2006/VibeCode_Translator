@@ -28,6 +28,16 @@ from hotkey import (
     key_matches_hotkey,
     parse_hotkey,
 )
+from ui_theme import (
+    fill_cream_background,
+    make_glass_card,
+    make_label,
+    setup_glass_window,
+    style_glass_readout,
+    style_pill_button,
+    style_popup,
+    style_text_field,
+)
 
 # ── Text editing (menu bar apps lack a standard Edit menu) ─────────────────────
 
@@ -184,116 +194,126 @@ class _SettingsWindowController(NSObject):
         current_provider = settings.get("provider", DEFAULT_PROVIDER_ID)
         current_cfg = PROVIDER_BY_ID.get(current_provider, PROVIDERS[0])
 
+        win_w, win_h = 440, 420
         panel = AppKit.NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
-            NSMakeRect(0, 0, 420, 290),
+            NSMakeRect(0, 0, win_w, win_h),
             AppKit.NSWindowStyleMaskTitled | AppKit.NSWindowStyleMaskClosable,
             AppKit.NSBackingStoreBuffered,
             False,
         )
         panel.setTitle_("VibeCode Translator Settings")
         panel.setDelegate_(self)
+        setup_glass_window(panel, win_w, win_h)
         self._panel = panel
 
-        content = panel.contentView()
+        content = AppKit.NSView.alloc().initWithFrame_(NSMakeRect(0, 0, win_w, win_h))
+        fill_cream_background(content)
+        panel.setContentView_(content)
 
-        subtitle = AppKit.NSTextField.labelWithString_("Enter your API Key to get started")
-        subtitle.setFrame_(NSMakeRect(20, 220, 380, 20))
-        subtitle.setTextColor_(AppKit.NSColor.secondaryLabelColor())
+        title = make_label("✦ VibeCode Translator", size=17.0, bold=True)
+        title.setFrame_(NSMakeRect(24, win_h - 40, 300, 22))
+        content.addSubview_(title)
+
+        subtitle = make_label("Enter your API Key to get started", size=12.0, secondary=True)
+        subtitle.setFrame_(NSMakeRect(24, win_h - 62, 392, 18))
         content.addSubview_(subtitle)
 
-        provider_label = AppKit.NSTextField.labelWithString_("AI Provider:")
-        provider_label.setFrame_(NSMakeRect(20, 185, 110, 20))
-        content.addSubview_(provider_label)
+        mint_card = make_glass_card(NSMakeRect(20, 208, 400, 148), tint="mint")
+        content.addSubview_(mint_card)
 
-        provider_select = AppKit.NSPopUpButton.alloc().initWithFrame_(NSMakeRect(140, 183, 260, 24))
+        provider_label = make_label("AI Provider:", size=12.0, secondary=True)
+        provider_label.setFrame_(NSMakeRect(16, 112, 100, 18))
+        mint_card.addSubview_(provider_label)
+
+        provider_select = AppKit.NSPopUpButton.alloc().initWithFrame_(NSMakeRect(120, 109, 264, 26))
         provider_select.addItemsWithTitles_([p["label"] for p in PROVIDERS])
         if current_provider in self._provider_ids:
             provider_select.selectItemAtIndex_(self._provider_ids.index(current_provider))
-        content.addSubview_(provider_select)
+        style_popup(provider_select)
+        mint_card.addSubview_(provider_select)
         self._provider_select = provider_select
 
-        key_label = AppKit.NSTextField.labelWithString_("API Key:")
-        key_label.setFrame_(NSMakeRect(20, 150, 110, 20))
-        content.addSubview_(key_label)
+        key_label = make_label("API Key:", size=12.0, secondary=True)
+        key_label.setFrame_(NSMakeRect(16, 78, 100, 18))
+        mint_card.addSubview_(key_label)
 
-        key_field = EditableTextField.alloc().initWithFrame_(NSMakeRect(140, 148, 260, 24))
+        key_field = EditableTextField.alloc().initWithFrame_(NSMakeRect(120, 75, 264, 26))
         key_field.setStringValue_(settings.get("api_key", ""))
         key_field.setPlaceholderString_(current_cfg.get("key_placeholder", "sk-..."))
-        content.addSubview_(key_field)
+        style_text_field(key_field)
+        mint_card.addSubview_(key_field)
         self._key_field = key_field
 
-        model_label = AppKit.NSTextField.labelWithString_("Model (optional):")
-        model_label.setFrame_(NSMakeRect(20, 115, 120, 20))
-        content.addSubview_(model_label)
+        model_label = make_label("Model (optional):", size=12.0, secondary=True)
+        model_label.setFrame_(NSMakeRect(16, 44, 120, 18))
+        mint_card.addSubview_(model_label)
 
-        model_field = EditableTextField.alloc().initWithFrame_(NSMakeRect(140, 113, 260, 24))
+        model_field = EditableTextField.alloc().initWithFrame_(NSMakeRect(120, 41, 264, 26))
         model_field.setStringValue_(settings.get("model", ""))
         model_field.setPlaceholderString_(current_cfg.get("model", ""))
-        content.addSubview_(model_field)
+        style_text_field(model_field)
+        mint_card.addSubview_(model_field)
         self._model_field = model_field
 
-        lang_label = AppKit.NSTextField.labelWithString_("Explanation Language:")
-        lang_label.setFrame_(NSMakeRect(20, 80, 130, 20))
-        content.addSubview_(lang_label)
+        peach_card = make_glass_card(NSMakeRect(20, 78, 400, 118), tint="peach")
+        content.addSubview_(peach_card)
 
-        lang_select = AppKit.NSPopUpButton.alloc().initWithFrame_(NSMakeRect(160, 78, 160, 24))
+        lang_label = make_label("Explanation Language:", size=12.0, secondary=True)
+        lang_label.setFrame_(NSMakeRect(16, 78, 140, 18))
+        peach_card.addSubview_(lang_label)
+
+        lang_select = AppKit.NSPopUpButton.alloc().initWithFrame_(NSMakeRect(160, 75, 200, 26))
         lang_select.addItemsWithTitles_(["English", "繁體中文"])
         if settings.get("language", "en") == "zh":
             lang_select.selectItemAtIndex_(1)
-        content.addSubview_(lang_select)
+        style_popup(lang_select)
+        peach_card.addSubview_(lang_select)
         self._lang_select = lang_select
 
         self._hotkey = settings.get("hotkey", DEFAULT_HOTKEY)
 
-        shortcut_label = AppKit.NSTextField.labelWithString_("Global Shortcut:")
-        shortcut_label.setFrame_(NSMakeRect(20, 50, 120, 20))
-        content.addSubview_(shortcut_label)
+        shortcut_label = make_label("Global Shortcut:", size=12.0, secondary=True)
+        shortcut_label.setFrame_(NSMakeRect(16, 44, 120, 18))
+        peach_card.addSubview_(shortcut_label)
 
-        hotkey_display = AppKit.NSTextField.alloc().initWithFrame_(NSMakeRect(145, 48, 90, 24))
-        hotkey_display.setEditable_(False)
-        hotkey_display.setSelectable_(False)
-        hotkey_display.setBezeled_(True)
-        hotkey_display.setDrawsBackground_(True)
-        hotkey_display.setAlignment_(AppKit.NSTextAlignmentCenter)
-        hotkey_display.setFont_(AppKit.NSFont.monospacedSystemFontOfSize_weight_(14.0, AppKit.NSFontWeightMedium))
+        hotkey_display = AppKit.NSTextField.alloc().initWithFrame_(NSMakeRect(140, 41, 88, 26))
+        style_glass_readout(hotkey_display)
         hotkey_display.setStringValue_(format_hotkey_display(self._hotkey))
-        content.addSubview_(hotkey_display)
+        peach_card.addSubview_(hotkey_display)
         self._hotkey_display = hotkey_display
 
-        record_btn = AppKit.NSButton.alloc().initWithFrame_(NSMakeRect(250, 46, 120, 28))
+        record_btn = AppKit.NSButton.alloc().initWithFrame_(NSMakeRect(240, 39, 144, 30))
         record_btn.setTitle_("Record Shortcut")
-        record_btn.setBezelStyle_(AppKit.NSBezelStyleRounded)
         record_btn.setTarget_(self)
         record_btn.setAction_(objc.selector(self.record_shortcut_, signature=b"v@:@"))
-        content.addSubview_(record_btn)
+        style_pill_button(record_btn, accent=False)
+        peach_card.addSubview_(record_btn)
         self._record_btn = record_btn
 
-        shortcut_hint = AppKit.NSTextField.labelWithString_("Click Record, then press your shortcut keys")
-        shortcut_hint.setFrame_(NSMakeRect(20, 28, 360, 16))
-        shortcut_hint.setTextColor_(AppKit.NSColor.secondaryLabelColor())
-        shortcut_hint.setFont_(AppKit.NSFont.systemFontOfSize_(11.0))
-        content.addSubview_(shortcut_hint)
+        shortcut_hint = make_label("Click Record, then press your shortcut keys", size=11.0, secondary=True)
+        shortcut_hint.setFrame_(NSMakeRect(16, 14, 360, 16))
+        peach_card.addSubview_(shortcut_hint)
 
         provider_select.setNextKeyView_(key_field)
         key_field.setNextKeyView_(model_field)
         model_field.setNextKeyView_(lang_select)
         lang_select.setNextKeyView_(record_btn)
 
-        save_btn = AppKit.NSButton.alloc().initWithFrame_(NSMakeRect(300, 12, 100, 28))
-        save_btn.setTitle_("Save")
-        save_btn.setBezelStyle_(AppKit.NSBezelStyleRounded)
-        save_btn.setKeyEquivalent_("\r")
-        save_btn.setTarget_(self)
-        save_btn.setAction_(objc.selector(self.save_, signature=b"v@:@"))
-        content.addSubview_(save_btn)
-
-        cancel_btn = AppKit.NSButton.alloc().initWithFrame_(NSMakeRect(190, 12, 100, 28))
+        cancel_btn = AppKit.NSButton.alloc().initWithFrame_(NSMakeRect(228, 22, 96, 34))
         cancel_btn.setTitle_("Cancel")
-        cancel_btn.setBezelStyle_(AppKit.NSBezelStyleRounded)
         cancel_btn.setKeyEquivalent_("\x1b")
         cancel_btn.setTarget_(self)
         cancel_btn.setAction_(objc.selector(self.cancel_, signature=b"v@:@"))
+        style_pill_button(cancel_btn, accent=False)
         content.addSubview_(cancel_btn)
+
+        save_btn = AppKit.NSButton.alloc().initWithFrame_(NSMakeRect(334, 22, 86, 34))
+        save_btn.setTitle_("Save")
+        save_btn.setKeyEquivalent_("\r")
+        save_btn.setTarget_(self)
+        save_btn.setAction_(objc.selector(self.save_, signature=b"v@:@"))
+        style_pill_button(save_btn, accent=True)
+        content.addSubview_(save_btn)
 
         panel.center()
         panel.makeKeyAndOrderFront_(None)

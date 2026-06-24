@@ -1,6 +1,6 @@
 # VibeCode Translator ✦
 
-**版本：MVP2** · [下載 .app](https://github.com/louisty2006/VibeCode_Translator/releases) · [更新紀錄](CHANGELOG.md)
+**版本：2.0.1** · [下載 .app](https://github.com/louisty2006/VibeCode_Translator/releases) · [更新紀錄](CHANGELOG.md)
 
 **把任何程式碼，翻譯成你聽得懂的語言。**
 
@@ -65,7 +65,7 @@ VibeCode Translator 讓你 **選取 → 解釋**，不用複製貼上到 ChatGPT
 
 #### 安裝步驟
 
-1. 到 [GitHub Releases](https://github.com/louisty2006/VibeCode_Translator/releases) 下載 **MVP2** 的 `VibeCode-Translator-MVP2-macOS.zip`
+1. 到 [GitHub Releases](https://github.com/louisty2006/VibeCode_Translator/releases) 下載最新版的 `VibeCode-Translator-*-macOS-arm64.zip`
 2. 解壓縮，將 `VibeCode Translator.app` **拖到「應用程式」資料夾**
 3. **雙擊開啟**
    - 若 macOS 提示「無法驗證開發者」→ **系統設定 → 隱私權與安全性 → 仍要開啟**
@@ -147,6 +147,29 @@ open "dist/VibeCode Translator.app"
 將 `.app` 壓縮後分享給同事，或上傳至 GitHub Releases。
 
 **需求：** macOS、Python 3.11+（腳本會自動建立 `.build-venv` 並安裝 py2app）
+
+---
+
+### 發布新版本（維護者）
+
+原始碼與打包版必須同步更新：`dist/` 不進 git，同事從 **GitHub Releases** 下載 `.app`。
+
+**前置條件：** macOS、`gh auth login`、變更已 commit
+
+1. 更新 [`CHANGELOG.md`](CHANGELOG.md)，並撰寫 `RELEASE_NOTES_X.Y.Z.md`
+2. 執行一鍵發布（會自動 bump `setup.py` 版本、build、zip、建立 Release）：
+
+```bash
+./release.sh X.Y.Z --notes RELEASE_NOTES_X.Y.Z.md
+```
+
+3. 到 GitHub Releases 確認 zip 可下載；可本地驗證：
+
+```bash
+open "dist/VibeCode Translator.app"
+```
+
+發布前建議先用 `./run.sh` 快速驗證原始碼路徑。
 
 ---
 
@@ -264,11 +287,13 @@ VibeCode_Translator/
 ├── bubble.py               # 浮動解釋氣泡 UI
 ├── providers.py            # AI 供應商設定
 ├── hotkey.py               # 快捷鍵解析、顯示與比對
+├── ui_theme.py             # Glassmorphism 共用視覺樣式
 ├── settings.py             # 讀寫使用者設定
 ├── setup.py                # py2app 打包設定
 ├── setup.sh                # 一鍵安裝（原始碼方式）
 ├── run.sh                  # 一鍵啟動（原始碼方式）
 ├── build_app.sh            # 一鍵打包 .app
+├── release.sh              # 一鍵發布（build + zip + GitHub Release）
 ├── requirements.txt        # 執行時依賴
 ├── requirements-build.txt  # 打包時依賴（含 py2app）
 └── CHANGELOG.md            # 版本更新紀錄

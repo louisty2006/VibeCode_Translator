@@ -1,8 +1,15 @@
 import threading
 import AppKit
 import objc
-from Foundation import NSObject, NSMakeRect, NSTimer, NSOperationQueue
-import Quartz
+from Foundation import NSObject, NSMakeRect, NSOperationQueue
+
+from ui_theme import (
+    configure_bubble_window,
+    make_glass_card,
+    make_label,
+    style_icon_button,
+    text_color,
+)
 
 def _run_on_main(fn):
     """Schedule fn() on the AppKit main thread (safe to call from any thread)."""
@@ -27,10 +34,9 @@ def show_bubble(text: str):
                 _bubble_window = None
 
             loc = AppKit.NSEvent.mouseLocation()
-            width = 360
-            height = 240
+            width = 400
+            height = 280
 
-            # macOS origin is bottom-left; place bubble to the right and above cursor
             screen = AppKit.NSScreen.mainScreen().frame()
             bx = min(loc.x + 16, screen.size.width - width - 10)
             by = min(loc.y + 16, screen.size.height - height - 10)
@@ -42,26 +48,40 @@ def show_bubble(text: str):
                 rect,
                 AppKit.NSWindowStyleMaskBorderless | AppKit.NSWindowStyleMaskNonactivatingPanel,
                 AppKit.NSBackingStoreBuffered,
-                False
+                False,
             )
+            configure_bubble_window(win)
             win.setLevel_(AppKit.NSFloatingWindowLevel + 1)
-            win.setOpaque_(False)
-            win.setAlphaValue_(0.95)
-            win.setHasShadow_(True)
             win.setMovableByWindowBackground_(True)
             win.setHidesOnDeactivate_(False)
 
-            # Container view with rounded corners
-            content = win.contentView()
-            content.setWantsLayer_(True)
-            content.layer().setCornerRadius_(12)
-            content.layer().setBackgroundColor_(
-                AppKit.NSColor.colorWithRed_green_blue_alpha_(0.12, 0.12, 0.14, 1.0).CGColor()
-            )
+            glass = make_glass_card(NSMakeRect(0, 0, width, height), tint="mint")
+            glass.setAutoresizingMask_(AppKit.NSViewWidthSizable | AppKit.NSViewHeightSizable)
+            win.setContentView_(glass)
+            content = glass
 
-            # Scroll view for long text
+            header = make_label("✦ VibeCode Translator", size=12.0, bold=True)
+            header.setFrame_(NSMakeRect(18, height - 36, 240, 18))
+            content.addSubview_(header)
+
+            close_delegate = _CloseDelegate.alloc().init()
+            close_delegate._win = win
+            _close_delegates[id(win)] = close_delegate
+
+            close_btn = AppKit.NSButton.alloc().initWithFrame_(
+                NSMakeRect(width - 40, height - 38, 26, 26)
+            )
+            close_btn.setTitle_("✕")
+            style_icon_button(close_btn)
+            close_btn.setTarget_(close_delegate)
+            close_btn.setAction_(objc.selector(
+                close_delegate.closeWindow_, signature=b"v@:@"
+            ))
+            content.addSubview_(close_btn)
+
+            scroll_h = height - 58
             scroll = AppKit.NSScrollView.alloc().initWithFrame_(
-                NSMakeRect(12, 12, width - 24, height - 44)
+                NSMakeRect(16, 14, width - 32, scroll_h)
             )
             scroll.setHasVerticalScroller_(True)
             scroll.setAutohidesScrollers_(True)
@@ -69,63 +89,22 @@ def show_bubble(text: str):
             scroll.setDrawsBackground_(False)
 
             text_view = AppKit.NSTextView.alloc().initWithFrame_(
-                NSMakeRect(0, 0, width - 24, height - 44)
+                NSMakeRect(0, 0, width - 32, scroll_h)
             )
             text_view.setString_(text)
             text_view.setEditable_(False)
             text_view.setSelectable_(True)
             text_view.setDrawsBackground_(False)
-            text_view.setTextColor_(AppKit.NSColor.whiteColor())
-            text_view.setFont_(AppKit.NSFont.systemFontOfSize_(13.0))
-            text_view.setTextContainerInset_(AppKit.NSMakeSize(4, 4))
+            text_view.setTextColor_(text_color())
+            text_view.setFont_(AppKit.NSFont.systemFontOfSize_(13.5))
+            text_view.setTextContainerInset_(AppKit.NSMakeSize(6, 8))
 
             scroll.setDocumentView_(text_view)
             text_view.sizeToFit()
             content.addSubview_(scroll)
 
-            close_delegate = _CloseDelegate.alloc().init()
-            close_delegate._win = win
-            _close_delegates[id(win)] = close_delegate
-
-            close_btn = AppKit.NSButton.alloc().initWithFrame_(
-                NSMakeRect(width - 36, height - 32, 24, 20)
-            )
-            close_btn.setTitle_("✕")
-            close_btn.setBezelStyle_(AppKit.NSBezelStyleRounded)
-            close_btn.setBordered_(False)
-            close_btn.setFont_(AppKit.NSFont.systemFontOfSize_(11.0))
-            close_btn.setTarget_(close_delegate)
-            close_btn.setAction_(objc.selector(
-                close_delegate.closeWindow_, signature=b'v@:@'
-            ))
-            content.addSubview_(close_btn)
-
-            # Header label
-            header = AppKit.NSTextField.alloc().initWithFrame_(
-                NSMakeRect(12, height - 30, 200, 20)
-            )
-            header.setStringValue_("✦ VibeCode Translator")
-            header.setEditable_(False)
-            header.setBezeled_(False)
-            header.setDrawsBackground_(False)
-            header.setTextColor_(AppKit.NSColor.colorWithRed_green_blue_alpha_(0.6, 0.8, 1.0, 1.0))
-            header.setFont_(AppKit.NSFont.boldSystemFontOfSize_(11.0))
-            content.addSubview_(header)
-
             win.makeKeyAndOrderFront_(None)
             _bubble_window = win
-
-            from Foundation import NSNotificationCenter
-            def _on_close(note):
-                import traceback
-                print("[DEBUG] bubble window closed! Stack:", flush=True)
-                traceback.print_stack()
-            NSNotificationCenter.defaultCenter().addObserverForName_object_queue_usingBlock_(
-                AppKit.NSWindowWillCloseNotification,
-                win,
-                NSOperationQueue.mainQueue(),
-                _on_close,
-            )
 
     NSOperationQueue.mainQueue().addOperationWithBlock_(_show)
 

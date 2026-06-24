@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0.1 — 2026-06-24
+
+- Glassmorphism UI：設定視窗與解釋氣泡視覺風格統一
+- 新增共用 `ui_theme.py` 模組
+- 解釋氣泡尺寸與標題列優化
+- 新增 `release.sh` 一鍵發布腳本（build + zip + GitHub Release）
+
 ## MVP2 — 2026-06-24
 
 **主打：免裝 Python，下載即用**
