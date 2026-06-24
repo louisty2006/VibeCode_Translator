@@ -40,7 +40,6 @@ OPTIONS = {
         "explainer",
         "bubble",
         "providers",
-        "hotkey",
         "ui_theme",
         "objc",
         "AppKit",

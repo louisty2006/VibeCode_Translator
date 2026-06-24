@@ -27,8 +27,10 @@ Code:
 
 Use natural language. Assume the reader has zero coding knowledge."""
 
+_HTTP_TIMEOUT = 25  # seconds
+
 def _call_anthropic(api_key: str, model: str, prompt: str) -> str:
-    client = anthropic.Anthropic(api_key=api_key)
+    client = anthropic.Anthropic(api_key=api_key, timeout=_HTTP_TIMEOUT)
     message = client.messages.create(
         model=model,
         max_tokens=1024,
@@ -38,7 +40,7 @@ def _call_anthropic(api_key: str, model: str, prompt: str) -> str:
 
 def _call_openai(api_key: str, model: str, prompt: str, base_url: str | None = None,
                  extra_headers: dict | None = None) -> str:
-    kwargs = {"api_key": api_key}
+    kwargs = {"api_key": api_key, "timeout": _HTTP_TIMEOUT}
     if base_url:
         kwargs["base_url"] = base_url
     if extra_headers:

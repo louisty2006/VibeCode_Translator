@@ -11,10 +11,6 @@ from ui_theme import (
     text_color,
 )
 
-def _run_on_main(fn):
-    """Schedule fn() on the AppKit main thread (safe to call from any thread)."""
-    NSOperationQueue.mainQueue().addOperationWithBlock_(fn)
-
 _bubble_window = None
 _bubble_lock = threading.Lock()
 _close_delegates = {}  # keep CloseDelegate alive: window_id → delegate
@@ -108,14 +104,3 @@ def show_bubble(text: str):
 
     NSOperationQueue.mainQueue().addOperationWithBlock_(_show)
 
-def show_loading_bubble():
-    show_bubble("⏳ Analyzing, please wait...")
-
-def close_bubble():
-    def _do_close():
-        global _bubble_window
-        with _bubble_lock:
-            if _bubble_window:
-                _bubble_window.close()
-                _bubble_window = None
-    _run_on_main(_do_close)

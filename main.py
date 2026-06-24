@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 VibeCode Translator — Global code explainer
-Highlight any code → global shortcut or right-click menu → natural language explanation
+Highlight any code → Cmd+Ctrl+E → natural language explanation
 """
 
 import sys
@@ -10,30 +10,31 @@ import threading
 import subprocess
 import time
 
+# ── Debug logging to file (packaged app has no visible stdout) ─────────────────
+_LOG_PATH = os.path.expanduser("~/vibecode_debug.log")
+def _log(msg):
+    try:
+        with open(_LOG_PATH, "a") as f:
+            f.write(f"{time.strftime('%H:%M:%S')} {msg}\n")
+    except Exception:
+        pass
+
 import AppKit
 import objc
 from Foundation import NSObject, NSMakeRect
 import rumps
 import Quartz
+from pynput import keyboard as kb
 
 from settings import load_settings, save_settings
 from explainer import explain_code
-from bubble import show_bubble, show_loading_bubble
+from bubble import show_bubble
 from providers import PROVIDERS, PROVIDER_BY_ID, DEFAULT_PROVIDER_ID
-from hotkey import (
-    DEFAULT_HOTKEY,
-    format_hotkey_display,
-    format_hotkey_spoken,
-    hotkey_from_nsevent_flags,
-    key_matches_hotkey,
-    parse_hotkey,
-)
 from ui_theme import (
     fill_cream_background,
     make_glass_card,
     make_label,
     setup_glass_window,
-    style_glass_readout,
     style_pill_button,
     style_popup,
     style_text_field,
@@ -61,11 +62,9 @@ class EditableTextField(AppKit.NSTextField):
     def performKeyEquivalent_(self, event):
         if not self._is_active_field():
             return objc.super(EditableTextField, self).performKeyEquivalent_(event)
-
         modifiers = event.modifierFlags() & AppKit.NSDeviceIndependentModifierFlagsMask
         if modifiers != AppKit.NSCommandKeyMask:
             return objc.super(EditableTextField, self).performKeyEquivalent_(event)
-
         key = event.charactersIgnoringModifiers()
         if key == "v":
             return self._paste_from_clipboard()
@@ -79,12 +78,9 @@ class EditableTextField(AppKit.NSTextField):
         return objc.super(EditableTextField, self).performKeyEquivalent_(event)
 
     def _paste_from_clipboard(self):
-        text = AppKit.NSPasteboard.generalPasteboard().stringForType_(
-            AppKit.NSPasteboardTypeString
-        )
+        text = AppKit.NSPasteboard.generalPasteboard().stringForType_(AppKit.NSPasteboardTypeString)
         if not text:
             return True
-        # Strip all whitespace/newlines so pasted API keys are clean
         text = "".join(text.split())
         editor = self.currentEditor()
         if editor:
@@ -134,35 +130,23 @@ class EditableTextField(AppKit.NSTextField):
 
 
 def _ensure_edit_menu():
-    """Menu bar apps have no Edit menu; wire standard copy/paste to first responder."""
     app = AppKit.NSApplication.sharedApplication()
     if app is None:
         return
-
     main_menu = app.mainMenu()
     if main_menu is None:
         main_menu = AppKit.NSMenu.alloc().init()
         app.setMainMenu_(main_menu)
-
     for item in main_menu.itemArray():
         if item.title() == "Edit":
             return
-
     edit_item = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Edit", None, "")
     edit_menu = AppKit.NSMenu.alloc().initWithTitle_("Edit")
     edit_item.setSubmenu_(edit_menu)
     main_menu.addItem_(edit_item)
-
-    entries = [
-        ("Cut", "cut:", "x"),
-        ("Copy", "copy:", "c"),
-        ("Paste", "paste:", "v"),
-        ("Select All", "selectAll:", "a"),
-    ]
-    for title, action, key in entries:
-        item = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
-            title, action, key
-        )
+    for title, action, key in [("Cut", "cut:", "x"), ("Copy", "copy:", "c"),
+                                ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")]:
+        item = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, action, key)
         item.setKeyEquivalentModifierMask_(AppKit.NSCommandKeyMask)
         edit_menu.addItem_(item)
 
@@ -179,13 +163,7 @@ class _SettingsWindowController(NSObject):
         self._model_field = None
         self._provider_select = None
         self._lang_select = None
-        self._hotkey_display = None
-        self._record_btn = None
-        self._hotkey = DEFAULT_HOTKEY
-        self._event_monitor = None
-        self._recording = False
         self._provider_ids = [p["id"] for p in PROVIDERS]
-        self._modal_done = False
         return self
 
     def show(self):
@@ -194,7 +172,7 @@ class _SettingsWindowController(NSObject):
         current_provider = settings.get("provider", DEFAULT_PROVIDER_ID)
         current_cfg = PROVIDER_BY_ID.get(current_provider, PROVIDERS[0])
 
-        win_w, win_h = 440, 420
+        win_w, win_h = 440, 330
         panel = AppKit.NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
             NSMakeRect(0, 0, win_w, win_h),
             AppKit.NSWindowStyleMaskTitled | AppKit.NSWindowStyleMaskClosable,
@@ -218,7 +196,8 @@ class _SettingsWindowController(NSObject):
         subtitle.setFrame_(NSMakeRect(24, win_h - 62, 392, 18))
         content.addSubview_(subtitle)
 
-        mint_card = make_glass_card(NSMakeRect(20, 208, 400, 148), tint="mint")
+        # Mint card: provider / key / model
+        mint_card = make_glass_card(NSMakeRect(20, 118, 400, 148), tint="mint")
         content.addSubview_(mint_card)
 
         provider_label = make_label("AI Provider:", size=12.0, secondary=True)
@@ -255,14 +234,15 @@ class _SettingsWindowController(NSObject):
         mint_card.addSubview_(model_field)
         self._model_field = model_field
 
-        peach_card = make_glass_card(NSMakeRect(20, 78, 400, 118), tint="peach")
+        # Peach card: language + shortcut hint
+        peach_card = make_glass_card(NSMakeRect(20, 58, 400, 48), tint="peach")
         content.addSubview_(peach_card)
 
         lang_label = make_label("Explanation Language:", size=12.0, secondary=True)
-        lang_label.setFrame_(NSMakeRect(16, 78, 140, 18))
+        lang_label.setFrame_(NSMakeRect(16, 14, 140, 18))
         peach_card.addSubview_(lang_label)
 
-        lang_select = AppKit.NSPopUpButton.alloc().initWithFrame_(NSMakeRect(160, 75, 200, 26))
+        lang_select = AppKit.NSPopUpButton.alloc().initWithFrame_(NSMakeRect(160, 11, 200, 26))
         lang_select.addItemsWithTitles_(["English", "繁體中文"])
         if settings.get("language", "en") == "zh":
             lang_select.selectItemAtIndex_(1)
@@ -270,36 +250,11 @@ class _SettingsWindowController(NSObject):
         peach_card.addSubview_(lang_select)
         self._lang_select = lang_select
 
-        self._hotkey = settings.get("hotkey", DEFAULT_HOTKEY)
-
-        shortcut_label = make_label("Global Shortcut:", size=12.0, secondary=True)
-        shortcut_label.setFrame_(NSMakeRect(16, 44, 120, 18))
-        peach_card.addSubview_(shortcut_label)
-
-        hotkey_display = AppKit.NSTextField.alloc().initWithFrame_(NSMakeRect(140, 41, 88, 26))
-        style_glass_readout(hotkey_display)
-        hotkey_display.setStringValue_(format_hotkey_display(self._hotkey))
-        peach_card.addSubview_(hotkey_display)
-        self._hotkey_display = hotkey_display
-
-        record_btn = AppKit.NSButton.alloc().initWithFrame_(NSMakeRect(240, 39, 144, 30))
-        record_btn.setTitle_("Record Shortcut")
-        record_btn.setTarget_(self)
-        record_btn.setAction_(objc.selector(self.recordShortcut_, signature=b"v@:@"))
-        style_pill_button(record_btn, accent=False)
-        peach_card.addSubview_(record_btn)
-        self._record_btn = record_btn
-
-        shortcut_hint = make_label("Click Record, then press your shortcut keys", size=11.0, secondary=True)
-        shortcut_hint.setFrame_(NSMakeRect(16, 14, 360, 16))
-        peach_card.addSubview_(shortcut_hint)
-
         provider_select.setNextKeyView_(key_field)
         key_field.setNextKeyView_(model_field)
         model_field.setNextKeyView_(lang_select)
-        lang_select.setNextKeyView_(record_btn)
 
-        cancel_btn = AppKit.NSButton.alloc().initWithFrame_(NSMakeRect(228, 22, 96, 34))
+        cancel_btn = AppKit.NSButton.alloc().initWithFrame_(NSMakeRect(228, 16, 96, 34))
         cancel_btn.setTitle_("Cancel")
         cancel_btn.setKeyEquivalent_("\x1b")
         cancel_btn.setTarget_(self)
@@ -307,7 +262,7 @@ class _SettingsWindowController(NSObject):
         style_pill_button(cancel_btn, accent=False)
         content.addSubview_(cancel_btn)
 
-        save_btn = AppKit.NSButton.alloc().initWithFrame_(NSMakeRect(334, 22, 86, 34))
+        save_btn = AppKit.NSButton.alloc().initWithFrame_(NSMakeRect(334, 16, 86, 34))
         save_btn.setTitle_("Save")
         save_btn.setKeyEquivalent_("\r")
         save_btn.setTarget_(self)
@@ -320,51 +275,7 @@ class _SettingsWindowController(NSObject):
         panel.makeFirstResponder_(key_field)
         AppKit.NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
 
-    def _stop_recording(self):
-        self._recording = False
-        if self._event_monitor is not None:
-            AppKit.NSEvent.removeMonitor_(self._event_monitor)
-            self._event_monitor = None
-        if self._record_btn is not None:
-            self._record_btn.setTitle_("Record Shortcut")
-
-    def recordShortcut_(self, sender):
-        if self._recording:
-            self._stop_recording()
-            return
-
-        self._recording = True
-        self._record_btn.setTitle_("Press keys…")
-        self._hotkey_display.setStringValue_("…")
-
-        def handler(event):
-            if not self._recording:
-                return event
-            if event.type() != AppKit.NSKeyDown:
-                return event
-            key = event.charactersIgnoringModifiers()
-            if key == "\x1b":
-                self._hotkey_display.setStringValue_(format_hotkey_display(self._hotkey))
-                self._stop_recording()
-                return event
-            if not key or len(key) != 1 or not key.isalnum():
-                return event
-            flags = event.modifierFlags() & AppKit.NSDeviceIndependentModifierFlagsMask
-            try:
-                self._hotkey = hotkey_from_nsevent_flags(key, flags)
-                self._hotkey_display.setStringValue_(format_hotkey_display(self._hotkey))
-            except ValueError:
-                return event
-            self._stop_recording()
-            return event
-
-        self._event_monitor = AppKit.NSEvent.addLocalMonitorForEventsMatchingMask_handler_(
-            AppKit.NSKeyDownMask,
-            handler,
-        )
-
     def save_(self, sender):
-        self._stop_recording()
         provider = self._provider_ids[self._provider_select.indexOfSelectedItem()]
         language = "en" if self._lang_select.indexOfSelectedItem() == 0 else "zh"
         save_settings({
@@ -372,24 +283,19 @@ class _SettingsWindowController(NSObject):
             "api_key": "".join(self._key_field.stringValue().split()),
             "model": self._model_field.stringValue().strip(),
             "language": language,
-            "hotkey": self._hotkey,
         })
-        reload_hotkey_listener()
         _clear_settings_controller()
         self._panel.orderOut_(None)
 
     def cancel_(self, sender):
-        self._stop_recording()
         _clear_settings_controller()
         self._panel.orderOut_(None)
 
     def windowShouldClose_(self, sender):
-        self._stop_recording()
         _clear_settings_controller()
         return True
 
 
-# Global reference keeps the controller alive while the window is open
 _settings_controller = None
 
 def _clear_settings_controller():
@@ -399,7 +305,6 @@ def _clear_settings_controller():
 def open_settings():
     global _settings_controller
     if _settings_controller is not None:
-        # Already open — bring to front
         _settings_controller._panel.makeKeyAndOrderFront_(None)
         AppKit.NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
         return
@@ -414,35 +319,26 @@ def has_accessibility_permission():
 
 def _accessibility_python_hint():
     exe = os.path.realpath(sys.executable)
-    app_bundle = os.path.join(
-        os.path.dirname(os.path.dirname(exe)),
-        "Resources",
-        "Python.app",
-    )
-    if os.path.exists(app_bundle):
-        return app_bundle
-    return sys.executable
+    app_bundle = os.path.join(os.path.dirname(os.path.dirname(exe)), "Resources", "Python.app")
+    return app_bundle if os.path.exists(app_bundle) else sys.executable
 
 
 def open_accessibility_settings():
-    urls = [
+    for url in [
         "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility",
         "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
-    ]
-    for url in urls:
-        result = subprocess.run(["open", url], capture_output=True)
-        if result.returncode == 0:
+    ]:
+        if subprocess.run(["open", url], capture_output=True).returncode == 0:
             return True
     return False
 
 
 def show_accessibility_prompt(then=None):
     python_path = _accessibility_python_hint()
-    shortcut = format_hotkey_spoken(load_settings().get("hotkey", DEFAULT_HOTKEY))
     alert = AppKit.NSAlert.alloc().init()
-    alert.setMessageText_(f"Enable Accessibility for {shortcut}")
+    alert.setMessageText_("Enable Accessibility for Cmd+Shift+E")
     alert.setInformativeText_(
-        f"VibeCode Translator needs Accessibility permission to listen for {shortcut}.\n\n"
+        "VibeCode Translator needs Accessibility permission to listen for Cmd+Shift+E.\n\n"
         "1. Click Open System Settings\n"
         "2. Enable Terminal and Python.app (Homebrew)\n"
         f"3. If needed, add:\n{python_path}\n\n"
@@ -457,93 +353,68 @@ def show_accessibility_prompt(then=None):
 
 # ── Global hotkey via pynput ───────────────────────────────────────────────────
 
-from pynput import keyboard as kb
-
-_hotkey_spec = None
-_hotkey_listener = None
 _pressed_keys = set()
 _last_trigger_time = 0.0
 _trigger_lock = threading.Lock()
 
-def _current_hotkey_spec():
-    global _hotkey_spec
-    if _hotkey_spec is None:
-        _hotkey_spec = parse_hotkey(load_settings().get("hotkey", DEFAULT_HOTKEY))
-    return _hotkey_spec
-
-def _key_matches_combo(pressed: set) -> bool:
-    return key_matches_hotkey(pressed, _current_hotkey_spec())
+def _hotkey_matched(pressed):
+    has_cmd   = any(k in pressed for k in (kb.Key.cmd, kb.Key.cmd_l, kb.Key.cmd_r))
+    has_shift = any(k in pressed for k in (kb.Key.shift, kb.Key.shift_l, kb.Key.shift_r))
+    has_e     = any(hasattr(k, 'char') and k.char and k.char.lower() == 'e' for k in pressed)
+    return has_cmd and has_shift and has_e
 
 def get_selected_text() -> str:
-    """Copy selected text to clipboard and return it."""
-    original = AppKit.NSPasteboard.generalPasteboard().stringForType_(
-        AppKit.NSPasteboardTypeString
-    ) or ""
-    # Simulate Cmd+C
-    src = Quartz.CGEventCreateKeyboardEvent(None, 0x08, True)   # C key down
+    src = Quartz.CGEventCreateKeyboardEvent(None, 0x08, True)
     Quartz.CGEventSetFlags(src, Quartz.kCGEventFlagMaskCommand)
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, src)
     src2 = Quartz.CGEventCreateKeyboardEvent(None, 0x08, False)
     Quartz.CGEventSetFlags(src2, Quartz.kCGEventFlagMaskCommand)
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, src2)
     time.sleep(0.15)
-    text = AppKit.NSPasteboard.generalPasteboard().stringForType_(
-        AppKit.NSPasteboardTypeString
-    ) or ""
-    return text.strip()
+    return (AppKit.NSPasteboard.generalPasteboard().stringForType_(AppKit.NSPasteboardTypeString) or "").strip()
 
 def trigger_explain():
+    _log("trigger_explain entered")
     if not _trigger_lock.acquire(blocking=False):
+        _log("trigger_explain: lock busy, skip")
         return
     try:
-        print("[DEBUG] trigger_explain() called", flush=True)
         text = get_selected_text()
-        print(f"[DEBUG] selected text: {repr(text[:80]) if text else '(empty)'}", flush=True)
+        _log(f"selected text len={len(text)}")
         if not text:
             show_bubble("⚠️ Please highlight some code first")
             return
-        show_loading_bubble()
+        show_bubble("⏳ Analyzing, please wait...")
         result = explain_code(text)
         show_bubble(result)
     except Exception as e:
-        print(f"[DEBUG] explain error: {e}", flush=True)
         show_bubble(f"❌ Error: {e}")
     finally:
         _trigger_lock.release()
 
 def on_press(key):
     _pressed_keys.add(key)
-    if _key_matches_combo(_pressed_keys):
+    _log(f"on_press {key!r}")
+    if _hotkey_matched(_pressed_keys):
         global _last_trigger_time
         now = time.time()
         if now - _last_trigger_time < 1.5:
             return
         _last_trigger_time = now
-        print(f"[DEBUG] Hotkey detected! keys={_pressed_keys}", flush=True)
+        _log("HOTKEY MATCHED -> trigger_explain")
         threading.Thread(target=trigger_explain, daemon=True).start()
 
 def on_release(key):
     _pressed_keys.discard(key)
-    # Also clear any char-equivalent that might have been added under a different representation
     if hasattr(key, 'char') and key.char:
-        _pressed_keys.discard(key.char)
         _pressed_keys.discard(key.char.lower())
-        _pressed_keys.discard(key.char.upper())
 
 def start_hotkey_listener():
-    global _hotkey_listener, _hotkey_spec
-    _hotkey_spec = parse_hotkey(load_settings().get("hotkey", DEFAULT_HOTKEY))
+    _log("start_hotkey_listener called")
     listener = kb.Listener(on_press=on_press, on_release=on_release)
     listener.daemon = True
     listener.start()
-    _hotkey_listener = listener
-
-def reload_hotkey_listener():
-    global _hotkey_listener, _hotkey_spec
-    _hotkey_spec = parse_hotkey(load_settings().get("hotkey", DEFAULT_HOTKEY))
-    if _hotkey_listener is not None:
-        _hotkey_listener.stop()
-    start_hotkey_listener()
+    _log(f"listener started, running={listener.running}")
 
 # ── Menu bar app ───────────────────────────────────────────────────────────────
 
@@ -554,7 +425,7 @@ class VibeCodeTranslatorApp(rumps.App):
         self.menu = [
             rumps.MenuItem("⚙️  Settings", callback=lambda _: open_settings()),
             rumps.MenuItem("🔓 Enable Shortcut", callback=self.enable_shortcut),
-            rumps.MenuItem("📖  Help", callback=self.show_help),
+rumps.MenuItem("📖  Help", callback=self.show_help),
             None,
         ]
         self._startup_timer = rumps.Timer(self._run_startup_flow, 0.5)
@@ -572,92 +443,23 @@ class VibeCodeTranslatorApp(rumps.App):
             open_settings()
 
     def enable_shortcut(self, _):
-        shortcut = format_hotkey_spoken(load_settings().get("hotkey", DEFAULT_HOTKEY))
         if has_accessibility_permission():
-            show_bubble(f"✅ Shortcut enabled. Use {shortcut} on highlighted code.")
+            show_bubble("✅ Shortcut enabled. Use Cmd + Control + E on highlighted code.")
             return
         show_accessibility_prompt()
 
     def show_help(self, _):
-        shortcut = format_hotkey_spoken(load_settings().get("hotkey", DEFAULT_HOTKEY))
         show_bubble(
             "How to use VibeCode Translator\n\n"
             "1. Highlight any code\n"
-            f"2. Press {shortcut}\n"
+            "2. Press Cmd + Control + E\n"
             "   (requires 🔓 Enable Shortcut first)\n\n"
             "First time? Open ⚙️ Settings and enter your API Key"
         )
-
-# ── Right-click interception via CGEventTap ────────────────────────────────────
-
-_right_click_pending = False
-
-def setup_right_click_menu():
-    """
-    Intercept right-click: show a small NSMenu with 'Explain Code' option.
-    Falls back gracefully in apps that have their own context menus.
-    """
-    def event_callback(proxy, event_type, event, refcon):
-        global _right_click_pending
-        if event_type == Quartz.kCGEventRightMouseDown:
-            _right_click_pending = True
-        elif event_type == Quartz.kCGEventRightMouseUp and _right_click_pending:
-            _right_click_pending = False
-
-            def show_context_menu():
-                menu = AppKit.NSMenu.alloc().init()
-                item = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
-                    "✦ Explain Code", None, ""
-                )
-
-                class MenuDelegate(NSObject):
-                    def menuItemClicked_(self, sender):
-                        trigger_explain()
-
-                delegate = MenuDelegate.alloc().init()
-                item.setTarget_(delegate)
-                item.setAction_(objc.selector(delegate.menuItemClicked_, signature=b'v@:@'))
-                menu.addItem_(item)
-
-                loc = AppKit.NSEvent.mouseLocation()
-                # NSMenu needs a view to pop from; use a dummy approach
-                AppKit.NSMenu.popUpContextMenu_withEvent_forView_(
-                    menu,
-                    AppKit.NSApp.currentEvent(),
-                    AppKit.NSApp.keyWindow().contentView() if AppKit.NSApp.keyWindow() else None
-                )
-
-            AppKit.NSApp.performSelectorOnMainThread_withObject_waitUntilDone_(
-                objc.selector(show_context_menu, signature=b'v@:'), None, False
-            )
-
-        return event
-
-    mask = (
-        Quartz.CGEventMaskBit(Quartz.kCGEventRightMouseDown) |
-        Quartz.CGEventMaskBit(Quartz.kCGEventRightMouseUp)
-    )
-    tap = Quartz.CGEventTapCreate(
-        Quartz.kCGSessionEventTap,
-        Quartz.kCGHeadInsertEventTap,
-        Quartz.kCGEventTapOptionDefault,
-        mask,
-        event_callback,
-        None
-    )
-    if tap:
-        run_loop_source = Quartz.CFMachPortCreateRunLoopSource(None, tap, 0)
-        Quartz.CFRunLoopAddSource(
-            Quartz.CFRunLoopGetCurrent(),
-            run_loop_source,
-            Quartz.kCFRunLoopCommonModes
-        )
-        Quartz.CGEventTapEnable(tap, True)
 
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     start_hotkey_listener()
-
     app = VibeCodeTranslatorApp()
     app.run()

@@ -5,5 +5,4 @@ pyobjc-framework-Quartz
 rumps
 anthropic
 openai
-requests
 pynput
