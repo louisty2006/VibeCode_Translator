@@ -2,12 +2,12 @@
 """
 VibeCode Translator — Global code explainer
 Highlight any code → Cmd+Ctrl+E → natural language explanation
+
 """
 
-import sys
+import ctypes
 import os
 import threading
-import subprocess
 import time
 
 # ── Debug logging to file (packaged app has no visible stdout) ─────────────────
@@ -24,8 +24,6 @@ import objc
 from Foundation import NSObject, NSMakeRect
 import rumps
 import Quartz
-from pynput import keyboard as kb
-
 from settings import load_settings, save_settings
 from explainer import explain_code
 from bubble import show_bubble
@@ -312,56 +310,10 @@ def open_settings():
     _settings_controller.show()
 
 
-def has_accessibility_permission():
-    from ApplicationServices import AXIsProcessTrusted
-    return bool(AXIsProcessTrusted())
+# ── Global hotkey via Carbon RegisterEventHotKey (no Accessibility needed) ────
 
-
-def _accessibility_python_hint():
-    exe = os.path.realpath(sys.executable)
-    app_bundle = os.path.join(os.path.dirname(os.path.dirname(exe)), "Resources", "Python.app")
-    return app_bundle if os.path.exists(app_bundle) else sys.executable
-
-
-def open_accessibility_settings():
-    for url in [
-        "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility",
-        "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
-    ]:
-        if subprocess.run(["open", url], capture_output=True).returncode == 0:
-            return True
-    return False
-
-
-def show_accessibility_prompt(then=None):
-    python_path = _accessibility_python_hint()
-    alert = AppKit.NSAlert.alloc().init()
-    alert.setMessageText_("Enable Accessibility for Cmd+Shift+E")
-    alert.setInformativeText_(
-        "VibeCode Translator needs Accessibility permission to listen for Cmd+Shift+E.\n\n"
-        "1. Click Open System Settings\n"
-        "2. Enable Terminal and Python.app (Homebrew)\n"
-        f"3. If needed, add:\n{python_path}\n\n"
-        "Then quit and restart VibeCode Translator."
-    )
-    alert.addButtonWithTitle_("Open System Settings")
-    alert.addButtonWithTitle_("Later")
-    if alert.runModal() == AppKit.NSAlertFirstButtonReturn:
-        open_accessibility_settings()
-    if then:
-        then()
-
-# ── Global hotkey via pynput ───────────────────────────────────────────────────
-
-_pressed_keys = set()
 _last_trigger_time = 0.0
 _trigger_lock = threading.Lock()
-
-def _hotkey_matched(pressed):
-    has_cmd   = any(k in pressed for k in (kb.Key.cmd, kb.Key.cmd_l, kb.Key.cmd_r))
-    has_shift = any(k in pressed for k in (kb.Key.shift, kb.Key.shift_l, kb.Key.shift_r))
-    has_e     = any(hasattr(k, 'char') and k.char and k.char.lower() == 'e' for k in pressed)
-    return has_cmd and has_shift and has_e
 
 def get_selected_text() -> str:
     src = Quartz.CGEventCreateKeyboardEvent(None, 0x08, True)
@@ -373,12 +325,25 @@ def get_selected_text() -> str:
     time.sleep(0.15)
     return (AppKit.NSPasteboard.generalPasteboard().stringForType_(AppKit.NSPasteboardTypeString) or "").strip()
 
+def _has_accessibility():
+    from ApplicationServices import AXIsProcessTrusted
+    return bool(AXIsProcessTrusted())
+
 def trigger_explain():
     _log("trigger_explain entered")
     if not _trigger_lock.acquire(blocking=False):
         _log("trigger_explain: lock busy, skip")
         return
     try:
+        if not _has_accessibility():
+            show_bubble(
+                "⚠️ One more step needed\n\n"
+                "Add VibeCode Translator in:\n"
+                "System Settings → Privacy & Security → Accessibility\n\n"
+                "Then highlight code and press Cmd+Ctrl+E again."
+            )
+            _open_accessibility_settings()
+            return
         text = get_selected_text()
         _log(f"selected text len={len(text)}")
         if not text:
@@ -392,74 +357,93 @@ def trigger_explain():
     finally:
         _trigger_lock.release()
 
-def on_press(key):
-    _pressed_keys.add(key)
-    _log(f"on_press {key!r}")
-    if _hotkey_matched(_pressed_keys):
-        global _last_trigger_time
-        now = time.time()
-        if now - _last_trigger_time < 1.5:
+def _open_accessibility_settings():
+    import subprocess
+    for url in [
+        "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility",
+        "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+    ]:
+        if subprocess.run(["open", url], capture_output=True).returncode == 0:
             return
-        _last_trigger_time = now
-        _log("HOTKEY MATCHED -> trigger_explain")
-        threading.Thread(target=trigger_explain, daemon=True).start()
 
-def on_release(key):
-    _pressed_keys.discard(key)
-    if hasattr(key, 'char') and key.char:
-        _pressed_keys.discard(key.char.lower())
+_carbon = ctypes.CDLL('/System/Library/Frameworks/Carbon.framework/Carbon')
+_hotkey_ref = ctypes.c_void_p()
+_handler_ref = ctypes.c_void_p()
+_carbon_cb = None  # ponytail: prevent GC of ctypes callback
 
 def start_hotkey_listener():
     _log("start_hotkey_listener called")
-    listener = kb.Listener(on_press=on_press, on_release=on_release)
-    listener.daemon = True
-    listener.start()
-    _log(f"listener started, running={listener.running}")
+
+    class _HotKeyID(ctypes.Structure):
+        _fields_ = [("signature", ctypes.c_uint32), ("id", ctypes.c_uint32)]
+
+    class _EventTypeSpec(ctypes.Structure):
+        _fields_ = [("eventClass", ctypes.c_uint32), ("eventKind", ctypes.c_uint32)]
+
+    _HANDLER_T = ctypes.CFUNCTYPE(ctypes.c_int32, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
+
+    def _on_hotkey(next_handler, the_event, user_data):
+        global _last_trigger_time
+        now = time.time()
+        if now - _last_trigger_time < 1.5:
+            return 0
+        _last_trigger_time = now
+        _log("HOTKEY MATCHED -> trigger_explain")
+        threading.Thread(target=trigger_explain, daemon=True).start()
+        return 0
+
+    global _hotkey_ref, _handler_ref, _carbon_cb
+    _carbon_cb = _HANDLER_T(_on_hotkey)
+
+    # ponytail: each attribute access on CDLL creates a new function object;
+    # restype must be set on the SAME object that will be called
+    _get_target = _carbon.GetApplicationEventTarget
+    _get_target.restype = ctypes.c_void_p
+    _reg_hotkey = _carbon.RegisterEventHotKey
+    _reg_hotkey.restype = ctypes.c_int32
+    _install_handler = _carbon.InstallEventHandler
+    _install_handler.restype = ctypes.c_int32
+
+    target = ctypes.c_void_p(_get_target())
+    _log(f"EventTarget={target.value:#x}" if target.value else "EventTarget=None")
+
+    # Register Cmd+Ctrl+E: keyCode=14, cmdKey=0x0100, controlKey=0x1000
+    hkid = _HotKeyID(signature=0x76626364, id=1)
+    status = _reg_hotkey(14, 0x0100 | 0x1000, hkid, target, 0, ctypes.byref(_hotkey_ref))
+    _log(f"RegisterEventHotKey status={status}")
+
+    event_type = _EventTypeSpec(0x6B657962, 5)  # kEventClassKeyboard, kEventHotKeyPressed
+    status2 = _install_handler(target, _carbon_cb, 1, ctypes.byref(event_type), None, ctypes.byref(_handler_ref))
+    _log(f"InstallEventHandler status={status2}")
 
 # ── Menu bar app ───────────────────────────────────────────────────────────────
 
 class VibeCodeTranslatorApp(rumps.App):
     def __init__(self):
         super().__init__("✦", quit_button="Quit VibeCode Translator")
-        _ensure_edit_menu()
         self.menu = [
             rumps.MenuItem("⚙️  Settings", callback=lambda _: open_settings()),
-            rumps.MenuItem("🔓 Enable Shortcut", callback=self.enable_shortcut),
-rumps.MenuItem("📖  Help", callback=self.show_help),
+            rumps.MenuItem("📖  Help", callback=self.show_help),
             None,
         ]
-        self._startup_timer = rumps.Timer(self._run_startup_flow, 0.5)
-        self._startup_timer.start()
+        self._init_timer = rumps.Timer(self._on_ready, 0.5)
+        self._init_timer.start()
 
-    def _run_startup_flow(self, _):
-        self._startup_timer.stop()
-        if not has_accessibility_permission():
-            show_accessibility_prompt(then=self._open_settings_if_needed)
-        else:
-            self._open_settings_if_needed()
-
-    def _open_settings_if_needed(self):
-        if not load_settings().get("api_key"):
-            open_settings()
-
-    def enable_shortcut(self, _):
-        if has_accessibility_permission():
-            show_bubble("✅ Shortcut enabled. Use Cmd + Control + E on highlighted code.")
-            return
-        show_accessibility_prompt()
+    def _on_ready(self, timer):
+        timer.stop()
+        _ensure_edit_menu()
+        start_hotkey_listener()
 
     def show_help(self, _):
         show_bubble(
             "How to use VibeCode Translator\n\n"
             "1. Highlight any code\n"
-            "2. Press Cmd + Control + E\n"
-            "   (requires 🔓 Enable Shortcut first)\n\n"
+            "2. Press Cmd+Ctrl+E\n\n"
             "First time? Open ⚙️ Settings and enter your API Key"
         )
 
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    start_hotkey_listener()
     app = VibeCodeTranslatorApp()
     app.run()
