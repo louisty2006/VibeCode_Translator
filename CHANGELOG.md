@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.2 — 2026-06-24
+
+- 修復打包版 `.app` 啟動失敗（PyObjC `record_shortcut_` 方法命名導致 Launch error）
+
 ## 2.0.1 — 2026-06-24
 
 - Glassmorphism UI：設定視窗與解釋氣泡視覺風格統一

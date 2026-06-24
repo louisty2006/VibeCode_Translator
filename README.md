@@ -1,6 +1,6 @@
 # VibeCode Translator ✦
 
-**版本：2.0.1** · [下載 .app](https://github.com/louisty2006/VibeCode_Translator/releases) · [更新紀錄](CHANGELOG.md)
+**版本：2.0.2** · [下載 .app](https://github.com/louisty2006/VibeCode_Translator/releases) · [更新紀錄](CHANGELOG.md)
 
 **把任何程式碼，翻譯成你聽得懂的語言。**
 

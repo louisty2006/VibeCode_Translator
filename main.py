@@ -285,7 +285,7 @@ class _SettingsWindowController(NSObject):
         record_btn = AppKit.NSButton.alloc().initWithFrame_(NSMakeRect(240, 39, 144, 30))
         record_btn.setTitle_("Record Shortcut")
         record_btn.setTarget_(self)
-        record_btn.setAction_(objc.selector(self.record_shortcut_, signature=b"v@:@"))
+        record_btn.setAction_(objc.selector(self.recordShortcut_, signature=b"v@:@"))
         style_pill_button(record_btn, accent=False)
         peach_card.addSubview_(record_btn)
         self._record_btn = record_btn
@@ -328,7 +328,7 @@ class _SettingsWindowController(NSObject):
         if self._record_btn is not None:
             self._record_btn.setTitle_("Record Shortcut")
 
-    def record_shortcut_(self, sender):
+    def recordShortcut_(self, sender):
         if self._recording:
             self._stop_recording()
             return
