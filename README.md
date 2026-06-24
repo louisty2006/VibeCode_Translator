@@ -1,10 +1,24 @@
 # VibeCode Translator ✦
 
+**版本：MVP2** · [下載 .app](https://github.com/louisty2006/VibeCode_Translator/releases) · [更新紀錄](CHANGELOG.md)
+
 **把任何程式碼，翻譯成你聽得懂的語言。**
 
 VibeCode Translator 是一款 macOS 選單列工具。你在任何 App 裡反白一段程式碼，按下快捷鍵，就會在游標旁彈出一個浮動視窗，用自然語言（英文或繁體中文）解釋這段 code 在做什麼、邏輯怎麼運作。
 
 專為 **vibe coder**、非工程師、或正在學程式的人設計——不需要離開你正在用的編輯器或瀏覽器。
+
+---
+
+## 快速開始：我該用哪種安裝方式？
+
+| 你是… | 推薦方式 | 需要做什麼 |
+|--------|----------|------------|
+| **同事 / 非工程師** | **方式 A：下載 `.app`** | 下載 → 拖到應用程式 → 雙擊 → 開權限 → 填 API Key |
+| **會用終端機的開發者** | **方式 B：原始碼** | `git clone` → `./setup.sh` → `./run.sh` |
+| **要打包給別人** | **方式 C：自己 build** | `./build_app.sh` → 分享 `dist/` 裡的 `.app` |
+
+> **常見錯誤：** `git clone` 後直接 `python main.py` 會報 `No module named 'rumps'`。一定要先跑 `./setup.sh`（或手動 `pip install`），或改用 `.app` 版本。
 
 ---
 
@@ -36,52 +50,82 @@ VibeCode Translator 讓你 **選取 → 解釋**，不用複製貼上到 ChatGPT
 
 ## 系統需求
 
-- **macOS**（已測試 Sonoma / Sequoia）
-- **Python 3.11+**（建議用 Homebrew 安裝）
-- 網路連線（使用雲端 AI 時；Ollama 除外）
+| 安裝方式 | 需要什麼 |
+|----------|----------|
+| **方式 A（.app）** | macOS 12+（Sonoma / Sequoia 已測試）、網路（雲端 AI） |
+| **方式 B / C（原始碼）** | 以上 + **Python 3.11+**（建議 Homebrew 安裝） |
 
 ---
 
 ## 安裝與啟動
 
-### 方式 A：下載 `.app`（推薦給同事）
+### 方式 A：下載 `.app`（推薦給同事）⭐
 
-1. 從 [GitHub Releases](https://github.com/louisty2006/VibeCode_Translator/releases) 下載 `VibeCode Translator.app`（或向開發者索取 `dist/VibeCode Translator.app`）
-2. 拖到「應用程式」資料夾
-3. 雙擊開啟（首次可能需在 **系統設定 → 隱私權與安全性** 點「仍要開啟」）
-4. 授予 **輔助使用** 權限（見下方「macOS 權限設定」）
-5. 選單列出現 **✦** 後，開啟 **⚙️ Settings** 填入 API Key
+**不需要 Python、venv 或 pip。**
 
-> 不需要安裝 Python、venv 或 `pip`。
+#### 安裝步驟
+
+1. 到 [GitHub Releases](https://github.com/louisty2006/VibeCode_Translator/releases) 下載 **MVP2** 的 `VibeCode-Translator-MVP2-macOS.zip`
+2. 解壓縮，將 `VibeCode Translator.app` **拖到「應用程式」資料夾**
+3. **雙擊開啟**
+   - 若 macOS 提示「無法驗證開發者」→ **系統設定 → 隱私權與安全性 → 仍要開啟**
+4. **授予輔助使用權限**（必要，否則快捷鍵無效）
+   - **系統設定 → 隱私權與安全性 → 輔助使用**
+   - 啟用 **VibeCode Translator**（不是 Terminal）
+   - 完全退出 App 後重新開啟
+5. 選單列右上角出現 **✦** → 點 **⚙️ Settings** → 填入 API Key 與語言
+
+#### 安裝檢查清單
+
+```
+□ 已解壓並放到「應用程式」
+□ 已雙擊開啟（通過「仍要開啟」）
+□ 輔助使用已啟用「VibeCode Translator」
+□ 選單列有 ✦ 圖示
+□ Settings 已填入 API Key
+□ 反白 code 後按 Cmd+Shift+E 有氣泡出現
+```
 
 ---
 
 ### 方式 B：從原始碼執行（開發者）
 
-#### 1. 下載專案
+#### 一鍵安裝（推薦）
 
 ```bash
 git clone https://github.com/louisty2006/VibeCode_Translator.git
 cd VibeCode_Translator
+./setup.sh      # 建立 venv + 安裝依賴（只需跑一次）
+./run.sh        # 啟動 App
 ```
 
-#### 2. 建立虛擬環境並安裝依賴
+#### 手動安裝
 
 ```bash
+git clone https://github.com/louisty2006/VibeCode_Translator.git
+cd VibeCode_Translator
+
 python3 -m venv venv
 source venv/bin/activate          # 終端機應顯示 (venv)
-pip install -r requirements.txt     # 必做！否則會缺 rumps、AppKit
-```
-
-#### 3. 啟動 App
-
-```bash
+pip install -r requirements.txt   # 必做！否則會缺 rumps、AppKit
 python main.py
 ```
 
-> **注意：** clone 下來不能直接 `python main.py`，一定要先 `pip install -r requirements.txt`。
+> **注意：**
+> - clone 後**不能**直接 `python main.py`，一定要先 `./setup.sh` 或 `pip install`
+> - 每次**新開終端機**要再跑：`cd VibeCode_Translator && ./run.sh`
+> - 看到 `(venv)` 代表環境正確；沒有 `(venv)` 就容易裝錯地方
 
-啟動後，選單列出現 **✦** 圖示，代表 App 已在背景執行。首次啟動會自動開啟設定視窗。
+#### 安裝檢查清單
+
+```
+□ 已 cd 進 VibeCode_Translator
+□ 已跑 ./setup.sh（或 pip install -r requirements.txt）
+□ ./run.sh 後選單列有 ✦
+□ 輔助使用已啟用 Terminal 或 Python（見下方權限說明）
+```
+
+啟動後首次會自動開啟設定視窗。
 
 ---
 
@@ -156,34 +200,32 @@ ollama serve
 
 ## macOS 權限設定
 
-App 需要以下權限才能正常運作：
+App 需要權限才能監聽快捷鍵、讀取反白文字。
 
 ### 輔助使用（Accessibility）— 必要
 
-用於：
-- 監聽全域快捷鍵 `Cmd + Shift + E`
-- 模擬 `Cmd + C` 讀取你反白的文字
+| 你用的安裝方式 | 在輔助使用清單中啟用 |
+|----------------|----------------------|
+| **方式 A（.app）** | **VibeCode Translator** |
+| **方式 B（終端機）** | **Terminal**，以及 **Python** / **Python.app**（Homebrew） |
 
 **設定步驟：**
 
-1. 開啟 **系統設定 → 隱私權與安全性 → 輔助使用**
-2. 啟用你執行 App 的程式，通常是：
-   - **Terminal**（若用終端機啟動）
-   - **Python** 或 **Python.app**（Homebrew 路徑）
-3. 若清單中沒有，點 **+** 手動加入你的 Python 路徑：
+1. **系統設定 → 隱私權與安全性 → 輔助使用**
+2. 依上表啟用對應項目；清單中沒有就點 **+** 手動加入
+3. 用終端機啟動時，可查 Python 路徑：
 
 ```bash
-# 查看你正在使用的 Python 路徑
-which python3
+which python    # 在 venv 啟用後執行
 ```
 
 4. **完全退出並重新啟動** App
 
-也可透過選單列 **✦ → 🔓 Enable Shortcut** 開啟引導提示。
+也可透過選單列 **✦ → 🔓 Enable Shortcut** 開啟引導。
 
 ### 輸入監控（Input Monitoring）— 建議
 
-部分 macOS 版本需要額外授予輸入監控權限，路徑同上：**系統設定 → 隱私權與安全性 → 輸入監控**。
+部分 macOS 版本需額外開啟：**系統設定 → 隱私權與安全性 → 輸入監控**（同樣啟用 VibeCode Translator 或 Terminal）。
 
 ---
 
@@ -222,9 +264,12 @@ VibeCode_Translator/
 ├── providers.py            # AI 供應商設定
 ├── settings.py             # 讀寫使用者設定
 ├── setup.py                # py2app 打包設定
-├── build_app.sh            # 一鍵打包腳本
+├── setup.sh                # 一鍵安裝（原始碼方式）
+├── run.sh                  # 一鍵啟動（原始碼方式）
+├── build_app.sh            # 一鍵打包 .app
 ├── requirements.txt        # 執行時依賴
-└── requirements-build.txt  # 打包時依賴（含 py2app）
+├── requirements-build.txt  # 打包時依賴（含 py2app）
+└── CHANGELOG.md            # 版本更新紀錄
 ```
 
 ---
